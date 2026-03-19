@@ -4,11 +4,12 @@ import numpy as np
 from PIL import Image
 import easyocr
 from ultralytics import YOLO
+import re
 
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
 def load_models():
-    model = YOLO("yolov8n.pt")   # custom trained plate model
+    model = YOLO("yolov8n.pt")
     reader = easyocr.Reader(['en'])
     return model, reader
 
@@ -49,20 +50,14 @@ for result in results:
     for box in boxes:
         x1, y1, x2, y2 = map(int, box)
 
-        # Crop detected region
         crop = img_copy[y1:y2, x1:x2]
 
-# 🔥 Focus only bottom-middle area (plate region)
-h, w, _ = crop.shape
-
-plate_img = crop[int(h*0.6):h, int(w*0.2):int(w*0.8)]
-
-        # Heuristic: assume plate is wide rectangle
         h, w, _ = crop.shape
-        if w > h:  
-            plate_img = crop
 
-            # Draw box
+        # ✅ ONLY take bottom-center region (plate area)
+        if w > h:
+            plate_img = crop[int(h*0.6):h, int(w*0.2):int(w*0.8)]
+
             cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0,255,0), 2)
             break
 
@@ -75,21 +70,22 @@ if plate_img is not None:
     st.subheader("Extracted Plate")
     st.image(plate_img)
 
-    # Convert to grayscale for OCR
+    # Preprocess
     gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2, fy=2)
 
-    # EasyOCR
-    result = reader.readtext(plate_img)
+    # OCR
+    result = reader.readtext(gray)
 
-text = ""
-for detection in result:
-    candidate = detection[1]
-    
-    # Keep only valid plate-like strings
-    if len(candidate) >= 6:
-        text += candidate + " "
+    text = ""
+    for detection in result:
+        candidate = detection[1]
+        if len(candidate) >= 6:
+            text += candidate + " "
 
-text = text.strip()
+    # Clean text
+    text = re.sub(r'[^A-Z0-9 ]', '', text)
+    text = text.strip()
 
     st.success(f"Detected Number: {text}")
 
