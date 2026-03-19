@@ -48,13 +48,33 @@ def detect_plate(image):
 
     return img, plate
 
-# Function: OCR
-def extract_text(plate):
-    text = pytesseract.image_to_string(plate, config='--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-    # Clean text
-    text = "".join(e for e in text if e.isalnum())
-    return text
+def preprocess_plate(plate):
+    gray = cv2.cvtColor(plate, cv2.COLOR_BGR2GRAY)
 
+    # Improve contrast
+    gray = cv2.equalizeHist(gray)
+
+    # Remove noise
+    gray = cv2.bilateralFilter(gray, 11, 17, 17)
+
+    # Convert to black & white
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+
+    return thresh
+
+
+def extract_text(plate):
+    processed = preprocess_plate(plate)
+
+    config = '--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+    text = pytesseract.image_to_string(processed, config=config)
+
+    # Clean result
+    text = "".join(e for e in text if e.isalnum())
+
+    return text, processed
+    
 # Load image
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
@@ -80,8 +100,11 @@ if plate is not None:
     st.subheader("Extracted Plate")
     st.image(plate)
 
-    text = extract_text(plate)
+    text, processed = extract_text(plate)
 
-    st.success(f"Detected Number: {text}")
+st.subheader("Processed Plate for OCR")
+st.image(processed, channels="GRAY")
+
+st.success(f"Detected Number: {text}")
 else:
     st.error("No license plate detected")
