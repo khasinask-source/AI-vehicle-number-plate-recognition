@@ -1,90 +1,27 @@
 import streamlit as st
 import cv2
 import numpy as np
-import pytesseract
 from PIL import Image
+import easyocr
+from ultralytics import YOLO
 
-# Title
-st.title("🚗 Vehicle Number Plate Detection App")
+# ---------------- LOAD MODELS ----------------
+@st.cache_resource
+def load_models():
+    model = YOLO("yolov8n.pt")  # general model
+    reader = easyocr.Reader(['en'])
+    return model, reader
 
-# Sidebar
-st.sidebar.header("Options")
+model, reader = load_models()
+
+# ---------------- TITLE ----------------
+st.title("🚗 Vehicle Number Plate Detection (YOLO + EasyOCR)")
+
+# ---------------- SIDEBAR ----------------
 uploaded_file = st.sidebar.file_uploader("Upload Vehicle Image", type=["jpg", "png", "jpeg"])
 use_sample = st.sidebar.checkbox("Use Sample Image")
 
-# ---------------- DETECTION FUNCTION ----------------
-def detect_plate(image):
-    img = np.array(image)
-
-    # Resize
-    img = cv2.resize(img, (600, 400))
-
-    # Grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Noise reduction
-    gray = cv2.bilateralFilter(gray, 11, 17, 17)
-
-    # Edge detection
-    edged = cv2.Canny(gray, 30, 200)
-
-    # Find contours
-    contours, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:30]
-
-    plate = None
-
-    for c in contours:
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.018 * peri, True)
-
-        if len(approx) == 4:
-            x, y, w, h = cv2.boundingRect(c)
-
-            # 🔥 FIX 1: Remove border noise (important)
-            padding = 5
-            plate = img[y+padding:y+h-padding, x+padding:x+w-padding]
-
-            cv2.drawContours(img, [approx], -1, (0, 255, 0), 3)
-            break
-
-    return img, plate
-
-# ---------------- PREPROCESSING ----------------
-def preprocess_plate(plate):
-    gray = cv2.cvtColor(plate, cv2.COLOR_BGR2GRAY)
-
-    # 🔥 FIX 2: Enlarge image (OCR works better)
-    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
-    # 🔥 FIX 3: Light blur (remove noise)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-
-    # 🔥 FIX 4: Adaptive threshold (better than fixed)
-    thresh = cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_MEAN_C,
-        cv2.THRESH_BINARY_INV,
-        15, 5
-    )
-
-    return thresh
-
-# ---------------- OCR ----------------
-def extract_text(plate):
-    processed = preprocess_plate(plate)
-
-    # 🔥 FIX 5: Correct OCR mode
-    config = '--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-
-    text = pytesseract.image_to_string(processed, config=config)
-
-    # Clean text
-    text = "".join(e for e in text if e.isalnum())
-
-    return text, processed
-
-# ---------------- IMAGE INPUT ----------------
+# ---------------- LOAD IMAGE ----------------
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 elif use_sample:
@@ -93,25 +30,57 @@ else:
     st.info("Upload an image or select sample image")
     st.stop()
 
+# Convert to OpenCV
+img = np.array(image)
+img_copy = img.copy()
+
 # ---------------- DISPLAY ORIGINAL ----------------
 st.subheader("Original Image")
 st.image(image, use_container_width=True)
 
-# ---------------- PROCESS ----------------
-processed_img, plate = detect_plate(image)
+# ---------------- YOLO DETECTION ----------------
+results = model(img)
 
-st.subheader("Detected Plate Region")
-st.image(processed_img, use_container_width=True)
+plate_img = None
 
-# ---------------- OCR OUTPUT ----------------
-if plate is not None:
+for result in results:
+    boxes = result.boxes.xyxy.cpu().numpy()
+    
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box)
+
+        # Crop detected region
+        crop = img_copy[y1:y2, x1:x2]
+
+        # Heuristic: assume plate is wide rectangle
+        h, w, _ = crop.shape
+        if w > h:  
+            plate_img = crop
+
+            # Draw box
+            cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0,255,0), 2)
+            break
+
+# ---------------- SHOW DETECTION ----------------
+st.subheader("Detected Region")
+st.image(img_copy, use_container_width=True)
+
+# ---------------- OCR ----------------
+if plate_img is not None:
     st.subheader("Extracted Plate")
-    st.image(plate)
+    st.image(plate_img)
 
-    text, processed = extract_text(plate)
+    # Convert to grayscale for OCR
+    gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
 
-    st.subheader("Processed Plate for OCR")
-    st.image(processed, channels="GRAY")
+    # EasyOCR
+    result = reader.readtext(gray)
+
+    text = ""
+    for detection in result:
+        text += detection[1] + " "
+
+    text = text.strip()
 
     st.success(f"Detected Number: {text}")
 
