@@ -49,7 +49,8 @@ for result in results:
 
         # Focus bottom-center region (plate area)
         if w > h:
-            plate_img = crop[int(h*0.6):h, int(w*0.2):int(w*0.8)]
+            # Focus tighter on plate area
+        plate_img = crop[int(h*0.65):int(h*0.9), int(w*0.25):int(w*0.75)]
 
             cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
             break
@@ -70,11 +71,19 @@ if plate_img is not None:
     # OCR
     result = reader.readtext(gray)
 
-    text = ""
-    for detection in result:
-        candidate = detection[1]
-        if len(candidate) >= 6:
-            text += candidate + " "
+candidates = []
+
+for detection in result:
+    candidate = detection[1]
+    
+    # Keep only alphanumeric
+    candidate = re.sub(r'[^A-Z0-9]', '', candidate.upper())
+    
+    if len(candidate) >= 4:
+        candidates.append(candidate)
+
+# Join all parts
+text = " ".join(candidates)
 
     # Clean text
     text = re.sub(r'[^A-Z0-9 ]', '', text)
