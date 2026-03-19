@@ -18,18 +18,8 @@ model, reader = load_models()
 # ---------------- TITLE ----------------
 st.title("🚗 Vehicle Number Plate Detection (YOLO + EasyOCR)")
 
-# ---------------- SIDEBAR ----------------
-uploaded_file = st.sidebar.file_uploader("Upload Vehicle Image", type=["jpg", "png", "jpeg"])
-use_sample = st.sidebar.checkbox("Use Sample Image")
-
-# ---------------- LOAD IMAGE ----------------
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-elif use_sample:
-    image = Image.open("sample.jpg")
-else:
-    st.info("Upload an image or select sample image")
-    st.stop()
+# ---------------- LOAD DEFAULT IMAGE ----------------
+image = Image.open("sample.jpg")
 
 # Convert to OpenCV
 img = np.array(image)
@@ -46,19 +36,22 @@ plate_img = None
 
 for result in results:
     boxes = result.boxes.xyxy.cpu().numpy()
-    
+
     for box in boxes:
         x1, y1, x2, y2 = map(int, box)
 
         crop = img_copy[y1:y2, x1:x2]
 
+        if crop.size == 0:
+            continue
+
         h, w, _ = crop.shape
 
-        # ✅ ONLY take bottom-center region (plate area)
+        # Focus bottom-center region (plate area)
         if w > h:
             plate_img = crop[int(h*0.6):h, int(w*0.2):int(w*0.8)]
 
-            cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0,255,0), 2)
+            cv2.rectangle(img_copy, (x1, y1), (x2, y2), (0, 255, 0), 2)
             break
 
 # ---------------- SHOW DETECTION ----------------
@@ -87,7 +80,16 @@ if plate_img is not None:
     text = re.sub(r'[^A-Z0-9 ]', '', text)
     text = text.strip()
 
-    st.success(f"Detected Number: {text}")
+    # Extra cleanup (remove duplicates / noise words)
+    words = text.split()
+    final_text = ""
+
+    for w in words:
+        if any(char.isdigit() for char in w):
+            final_text = w
+            break
+
+    st.success(f"Detected Number: {final_text}")
 
 else:
     st.error("No license plate detected")
