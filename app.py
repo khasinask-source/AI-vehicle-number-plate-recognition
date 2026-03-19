@@ -52,6 +52,11 @@ for result in results:
         # Crop detected region
         crop = img_copy[y1:y2, x1:x2]
 
+# 🔥 Focus only bottom-middle area (plate region)
+h, w, _ = crop.shape
+
+plate_img = crop[int(h*0.6):h, int(w*0.2):int(w*0.8)]
+
         # Heuristic: assume plate is wide rectangle
         h, w, _ = crop.shape
         if w > h:  
@@ -74,13 +79,17 @@ if plate_img is not None:
     gray = cv2.cvtColor(plate_img, cv2.COLOR_BGR2GRAY)
 
     # EasyOCR
-    result = reader.readtext(gray)
+    result = reader.readtext(plate_img)
 
-    text = ""
-    for detection in result:
-        text += detection[1] + " "
+text = ""
+for detection in result:
+    candidate = detection[1]
+    
+    # Keep only valid plate-like strings
+    if len(candidate) >= 6:
+        text += candidate + " "
 
-    text = text.strip()
+text = text.strip()
 
     st.success(f"Detected Number: {text}")
 
