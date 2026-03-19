@@ -8,7 +8,7 @@ from ultralytics import YOLO
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
 def load_models():
-    model = YOLO("best.pt")   # custom trained plate model
+    model = YOLO("yolov8n.pt")   # custom trained plate model
     reader = easyocr.Reader(['en'])
     return model, reader
 
