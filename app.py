@@ -40,7 +40,11 @@ def detect_plate(image):
 
         if len(approx) == 4:
             x, y, w, h = cv2.boundingRect(c)
-            plate = img[y:y+h, x:x+w]
+
+            # 🔥 FIX 1: Remove border noise (important)
+            padding = 5
+            plate = img[y+padding:y+h-padding, x+padding:x+w-padding]
+
             cv2.drawContours(img, [approx], -1, (0, 255, 0), 3)
             break
 
@@ -50,14 +54,19 @@ def detect_plate(image):
 def preprocess_plate(plate):
     gray = cv2.cvtColor(plate, cv2.COLOR_BGR2GRAY)
 
-    # Improve contrast
-    gray = cv2.equalizeHist(gray)
+    # 🔥 FIX 2: Enlarge image (OCR works better)
+    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
 
-    # Remove noise
-    gray = cv2.bilateralFilter(gray, 11, 17, 17)
+    # 🔥 FIX 3: Light blur (remove noise)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Threshold
-    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+    # 🔥 FIX 4: Adaptive threshold (better than fixed)
+    thresh = cv2.adaptiveThreshold(
+        gray, 255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        15, 5
+    )
 
     return thresh
 
@@ -65,7 +74,9 @@ def preprocess_plate(plate):
 def extract_text(plate):
     processed = preprocess_plate(plate)
 
-    config = '--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    # 🔥 FIX 5: Correct OCR mode
+    config = '--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
     text = pytesseract.image_to_string(processed, config=config)
 
     # Clean text
