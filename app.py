@@ -10,17 +10,16 @@ st.title("🚗 Vehicle Number Plate Detection App")
 # Sidebar
 st.sidebar.header("Options")
 uploaded_file = st.sidebar.file_uploader("Upload Vehicle Image", type=["jpg", "png", "jpeg"])
-
 use_sample = st.sidebar.checkbox("Use Sample Image")
 
-# Function: Detect Plate
+# ---------------- DETECTION FUNCTION ----------------
 def detect_plate(image):
     img = np.array(image)
 
     # Resize
     img = cv2.resize(img, (600, 400))
 
-    # Convert to grayscale
+    # Grayscale
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Noise reduction
@@ -31,7 +30,6 @@ def detect_plate(image):
 
     # Find contours
     contours, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:30]
 
     plate = None
@@ -48,6 +46,7 @@ def detect_plate(image):
 
     return img, plate
 
+# ---------------- PREPROCESSING ----------------
 def preprocess_plate(plate):
     gray = cv2.cvtColor(plate, cv2.COLOR_BGR2GRAY)
 
@@ -57,25 +56,24 @@ def preprocess_plate(plate):
     # Remove noise
     gray = cv2.bilateralFilter(gray, 11, 17, 17)
 
-    # Convert to black & white
+    # Threshold
     _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
 
     return thresh
 
-
+# ---------------- OCR ----------------
 def extract_text(plate):
     processed = preprocess_plate(plate)
 
     config = '--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-
     text = pytesseract.image_to_string(processed, config=config)
 
-    # Clean result
+    # Clean text
     text = "".join(e for e in text if e.isalnum())
 
     return text, processed
-    
-# Load image
+
+# ---------------- IMAGE INPUT ----------------
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
 elif use_sample:
@@ -84,27 +82,27 @@ else:
     st.info("Upload an image or select sample image")
     st.stop()
 
-# Display original
+# ---------------- DISPLAY ORIGINAL ----------------
 st.subheader("Original Image")
 st.image(image, use_container_width=True)
 
-# Process
+# ---------------- PROCESS ----------------
 processed_img, plate = detect_plate(image)
 
-# Show processed image
 st.subheader("Detected Plate Region")
 st.image(processed_img, use_container_width=True)
 
-# Show plate + OCR
+# ---------------- OCR OUTPUT ----------------
 if plate is not None:
     st.subheader("Extracted Plate")
     st.image(plate)
 
     text, processed = extract_text(plate)
 
-st.subheader("Processed Plate for OCR")
-st.image(processed, channels="GRAY")
+    st.subheader("Processed Plate for OCR")
+    st.image(processed, channels="GRAY")
 
-st.success(f"Detected Number: {text}")
+    st.success(f"Detected Number: {text}")
+
 else:
     st.error("No license plate detected")
