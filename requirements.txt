@@ -1,5 +1,6 @@
 streamlit
 opencv-python-headless
 numpy
-pytesseract
-Pillow
+pillow
+easyocr
+ultralytics
